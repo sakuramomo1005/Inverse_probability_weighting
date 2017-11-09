@@ -13,10 +13,10 @@ Time Used 6.539501 hours
 
 #### Imputation model: 
 
-Y_{ijl}=\beta_0+\bata_1 X_{ijl} + u_{ij}
+$Y_{ijl}=\beta_0+\bata_1 X_{ijl} + u_{ij}$
 
 #### Analysis model:
-Y_{ijl}=\beta_0+\bata_1 X_{ijl} +\beta_2 trt_{ijl}+ u_{ij}
+$Y_{ijl}=\beta_0+\bata_1 X_{ijl} +\beta_2 trt_{ijl}+ u_{ij}$
 
 ### Results 
 
