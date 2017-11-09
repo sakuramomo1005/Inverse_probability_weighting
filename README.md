@@ -9,7 +9,7 @@ ICC: 0.06
 Time Used 6.539501 hours
 
 #### Data Generation
-
+Let $\text{S}_1(N) = \sum_{p=1}^N \text{E}(p)$
 
 #### Imputation model: 
 
