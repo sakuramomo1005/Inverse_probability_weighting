@@ -2,6 +2,21 @@
 The project of applying IPW to handling missing data in CRTs
 
 ## A simulation 
+Number of clusters in each group: 50 
+Number of individuals in each cluster: 25
+Repeat time: 50
+ICC: 0.06
+Time Used 6.539501 hours
+
+#### Data Generation
+
+
+#### Imputation model: 
+
+Y_{ijl}=\beta_0+\bata_1 X_{ijl} + u_{ij}
+
+#### Analysis model:
+Y_{ijl}=\beta_0+\bata_1 X_{ijl} +\beta_2 trt_{ijl}+ u_{ij}
 
 ### Results 
 
