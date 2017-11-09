@@ -7,7 +7,7 @@ Weights come from:
 + 2. nonresponse weight
 
 The weighted esitmator, given by:
-$T_y=\sum d_{ij} \hat{q}_{ij}R_{ij}y_{ij}$
+$T_y $ $=\sum d_{ij} q_{ij} R_{ij} y_{ij}$
 
 Basic parametric model (with cluster effects):
 $pr(R_{ij}=1|u_i)=h(x_{ij}\beta+u_i)$
@@ -15,6 +15,7 @@ h() is the inverse logit function.
 
 ## IPW v.s. MMI
 IPW needs a model for the probability that an individual is a complete case
+
 MI needs a model for the distribution of the missing data given the observed data
 
 + MI advantages:
@@ -27,9 +28,9 @@ MI needs a model for the distribution of the missing data given the observed dat
 2. Avoid the bias from mis-specified imputation model
 
 ## A simulation 
-Number of clusters in each group: 50 
-Number of individuals in each cluster: 25
-Repeat time: 50
+Number of clusters in each group: 50 \\
+Number of individuals in each cluster: 25\\
+Repeat time: 50\\
 Missing percentage: 30%
 ICC: 0.06
 Time Used 6.539501 hours
@@ -37,8 +38,10 @@ Time Used 6.539501 hours
 #### Data Generation
 $Y_{ijl}=\beta_0+\beta_1 X_{ijl} +\beta_2 trt_{ijl}+ u_{ij}$
 logit $R_{ijl}=\beta_0+\beta_1 X_{ijl} + u_{ij}$
-i: is the indicator of treatment effect (i=1, intervention group; i=0, control group)
+
+i: is the indicator of treatment effect (i=1, intervention group; i=0, control group)\\
 j: the jth cluster 
+
 l: the lth individual in cluster j group i. 
 
 #### Imputation model: 
