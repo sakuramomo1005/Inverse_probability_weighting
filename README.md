@@ -13,10 +13,10 @@ Let $\text{S}_1(N) = \sum_{p=1}^N \text{E}(p)$
 
 #### Imputation model: 
 
-$Y_{ijl}=\beta_0+\bata_1 X_{ijl} + u_{ij}$
+$Y_{ijl}=\beta_0+\beta_1 X_{ijl} + u_{ij}$
 
 #### Analysis model:
-$Y_{ijl}=\beta_0+\bata_1 X_{ijl} +\beta_2 trt_{ijl}+ u_{ij}$
+$Y_{ijl}=\beta_0+\beta_1 X_{ijl} +\beta_2 trt_{ijl}+ u_{ij}$
 
 ### Results 
 
