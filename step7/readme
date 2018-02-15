@@ -1,0 +1,2 @@
+the ipwstep7 only contains the calculation for icc in (0.1,0.2,....0.9)
+for calculation of difference variance, just change the first line in the simulation part to for(var in c(0.2,0.5,0.8,1.1,2,3,5)
