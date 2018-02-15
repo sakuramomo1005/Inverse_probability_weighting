@@ -1,16 +1,19 @@
+## from missingness ICC calculate variance
 missing_icc=function(rho){
   pi=3.1415926
   sigma=(pi^2/3)/(1/rho-1)
   return(sigma)
 }
 
+# for example, calculate the variance of ICC 0.05
 missingicc=missing_icc(0.05)
-# 0.004
 
-library('lme4')
+
+library(lme4)
 library(geepack)
 library(CRTgeeDR)
 
+## function to catch errors and warns
 myTryCatch <- function(expr) {
   warn <- err <- NULL
   value <- withCallingHandlers(
@@ -27,9 +30,9 @@ myTryCatch <- function(expr) {
 # expit function
 expit=function(x){y=exp(x)/(1+exp(x));return(y)}
 
-#
-
-one_group3=function(mis=2,i,k,mm,icc,intercept,seed=123){
+# function for generate one intervention arm
+# k cluster numbers; mm, cluster size; intercept: missingness generation intercpet; vars: uijl's variance
+one_group3=function(mis=5,i,k,mm,icc,intercept,seed=123,vars){
   set.seed(seed)
   #if(s==1){b0=1;b1=1.36;b2=1;psi=-1.8}
   #if(s==3){b0=1;b1=1.36;b2=0.588;psi=-1.8}
@@ -38,7 +41,7 @@ one_group3=function(mis=2,i,k,mm,icc,intercept,seed=123){
   sigma_b=sqrt(0.2)
   mu_x=0
   sigma_alpha=sqrt(0.18)
-  sigma_u=sqrt(0.2)
+  sigma_u=sqrt(vars) # change the variance 
   
   phi=1
   x=matrix(0,k,mm+5*(mm/25))
@@ -48,13 +51,14 @@ one_group3=function(mis=2,i,k,mm,icc,intercept,seed=123){
   r=matrix(0,k,mm+5*(mm/25))
   mis_clu=matrix(0,k,mm+5*(mm/25))
   groups=matrix(i,k,mm+5*(mm/25))
+  
   for(kk in 1:k){
     delta=rnorm(1,0,sigma_b)
     alpha=rnorm(1,mu_x,sigma_alpha)
     m=round(runif(1,mm-5*(mm/25),mm+5*(mm/25)))
     # print(m)
     cluster[kk,]=kk
-    sigma_icc=missing_icc(icc)
+    sigma_icc=missing_icc(icc) ## missingness ICC
     clu=rnorm(1,0,sqrt(sigma_icc))
     # print(m)
     mis_clu[kk,]=clu
@@ -76,56 +80,8 @@ one_group3=function(mis=2,i,k,mm,icc,intercept,seed=123){
   return(list(x=x,y=y,pi=pi,r=r,cluster=cluster))
 }
 
-one_group3=function(mis=2,i,k,mm,icc,intercept,seed=123,vars){
-  set.seed(seed)
-  #if(s==1){b0=1;b1=1.36;b2=1;psi=-1.8}
-  #if(s==3){b0=1;b1=1.36;b2=0.588;psi=-1.8}
-  ## parameters
-  b0=1;b1=1.36;b2=1;psi=intercept
-  sigma_b=sqrt(0.2)
-  mu_x=0
-  sigma_alpha=sqrt(0.18)
-  sigma_u=sqrt(vars)
-  
-  phi=1
-  x=matrix(0,k,mm+5*(mm/25))
-  y=matrix(0,k,mm+5*(mm/25))
-  pi=matrix(0,k,mm+5*(mm/25))
-  cluster=matrix(0,k,mm+5*(mm/25))
-  r=matrix(0,k,mm+5*(mm/25))
-  mis_clu=matrix(0,k,mm+5*(mm/25))
-  groups=matrix(i,k,mm+5*(mm/25))
-  for(kk in 1:k){
-    delta=rnorm(1,0,sigma_b)
-    alpha=rnorm(1,mu_x,sigma_alpha)
-    m=round(runif(1,mm-5*(mm/25),mm+5*(mm/25)))
-    # print(m)
-    cluster[kk,]=kk
-    sigma_icc=missing_icc(icc)
-    clu=rnorm(1,0,sqrt(sigma_icc))
-    # print(m)
-    mis_clu[kk,]=clu
-    for(j in 1:m){
-      u=rnorm(1,0,sigma_u)
-      x[kk,j]=u+alpha
-      pi[kk,j]=expit(b0+b1*i+b2*x[kk,j]+delta)
-      y[kk,j]=rbinom(1,1,pi[kk,j])
-    }
-  }
-  #r=expit(psi+phi*x)
-  # Different missingness generation models, 6 scenarios
-  if(mis==1){r=expit(psi+phi*x)}
-  if(mis==2){r=expit(psi+phi*x+groups)}
-  if(mis==3){r=expit(psi+phi*x+groups+x*groups)}
-  if(mis==4){r=expit(psi+phi*x+mis_clu)}
-  if(mis==5){r=expit(psi+phi*x+groups+mis_clu)}
-  if(mis==6){r=expit(psi+phi*x+groups+x*groups+mis_clu)}
-  return(list(x=x,y=y,pi=pi,r=r,cluster=cluster))
-}
+# function that combines two intervention arm
 
-
-
-# combine two intervention arm
 data_gene3=function(k,m,s,mis=5,icc,intercept,seed=123,vars){
   set.seed(seed)
   # step1:
@@ -153,6 +109,7 @@ data_gene3=function(k,m,s,mis=5,icc,intercept,seed=123,vars){
   return(data0)
 }
 
+# function for calculate intercept in missingess generation model
 mis_per=function(n,m.bar,icc,vars,seed=123){
   data=c()
   for(i in seq(-5,5,0.1)){
@@ -166,6 +123,7 @@ mis_per=function(n,m.bar,icc,vars,seed=123){
   return(intercept)
 }
 
+## function to change missing percentage
 mis_per_check=function(vars,n,m,icc,intercept,seed=123){
   temp=data_gene3(k=n,m=m,icc=icc,intercept=intercept,seed,vars=vars)
   percent=sum(temp$R)/dim(temp)[1]
@@ -173,146 +131,8 @@ mis_per_check=function(vars,n,m,icc,intercept,seed=123){
 }
 
 
-#one_group3=function(mis,s,i,k,mm,seed=123,psi){
-  set.seed(seed)
-  if(s==1){b0=1;b1=1.36;b2=1}
-  if(s==3){b0=1;b1=1.36;b2=0.588}
-  ## parameters
-  sigma_b=sqrt(0.2)
-  mu_x=0
-  sigma_alpha=sqrt(0.18)
-  sigma_u=sqrt(3.37)
-  
-  phi=1
-  x=matrix(0,k,mm+5*(mm/25))
-  y=matrix(0,k,mm+5*(mm/25))
-  pi=matrix(0,k,mm+5*(mm/25))
-  cluster=matrix(0,k,mm+5*(mm/25))
-  r=matrix(0,k,mm+5*(mm/25))
-  mis_clu=matrix(0,k,mm+5*(mm/25))
-  groups=matrix(i,k,mm+5*(mm/25))
-  for(kk in 1:k){
-    delta=rnorm(1,0,sigma_b)
-    alpha=rnorm(1,mu_x,sigma_alpha)
-    m=round(runif(1,mm-5*(mm/25),mm+5*(mm/25)))
-    # print(m)
-    cluster[kk,]=kk
-    sigma_icc=missing_icc(0.05)
-    clu=rnorm(1,0,sqrt(sigma_icc))
-    # print(m)
-    mis_clu[kk,]=clu
-    for(j in 1:m){
-      u=rnorm(1,0,sigma_u)
-      x[kk,j]=u+alpha
-      pi[kk,j]=expit(b0+b1*i+b2*x[kk,j]+delta)
-      y[kk,j]=rbinom(1,1,pi[kk,j])
-    }
-  }
-  #r=expit(psi+phi*x)
-  # Different missingness generation models, 6 scenarios
-  if(mis==1){r=expit(psi+phi*x)}
-  if(mis==2){r=expit(psi+phi*x+groups)}
-  if(mis==3){r=expit(psi+phi*x+groups+x*groups)}
-  if(mis==4){r=expit(psi+phi*x+mis_clu)}
-  if(mis==5){r=expit(psi+phi*x+groups+mis_clu)}
-  if(mis==6){r=expit(psi+phi*x+groups+x*groups+mis_clu)}
-  return(list(x=x,y=y,pi=pi,r=r,cluster=cluster))
-}
-#psi=-1.8 missing =30%
-# combine two intervention arm
-#data_gene3=function(k,m,s,mis,seed=123,psi){
-  set.seed(seed)
-  # step1:
-  a1=one_group3(i=1,k=k,m=m,seed=seed,mis=mis,s=s,psi=psi)
-  a0=one_group3(i=0,k=k,m=m,seed=seed,mis=mis,s=s,psi=psi)
-  # step2
-  b1=data.frame(x=c(a1$x),y=c(a1$y),r=c(a1$r),cluster=c(a1$cluster))
-  R=c()
-  for(i in 1:dim(b1)[1]){
-    R[i]=rbinom(1,1,b1$r[i])
-  }
-  b1$R=R
-  b1$arm=1
-  b1$cluster=b1$cluster+k
-  b0=data.frame(x=c(a0$x),y=c(a0$y),r=c(a0$r),cluster=c(a0$cluster))
-  R=c()
-  for(i in 1:dim(b0)[1]){
-    R[i]=rbinom(1,1,b0$r[i])
-  }
-  b0$R=R
-  b0$arm=0
-  # step3:
-  data=rbind(b0,b1)
-  data0=data[data$x!=0,]
-  return(data0)
-}
-
-
-
-#data_gen4=function(n,m.bar,icc,intercept,seed=123){
-  set.seed(seed)
-  m<-round(runif(n,m.bar-10,m.bar+10))
-  N<-sum(m)
-  cluster<-rep(1:n,m)
-  
-  # outcome generation
-  t<-rep(0,n)
-  t[sample(1:n,n/2)]<-1
-  t.rep<-rep(t,m)
-  
-  alpha<-rep(rnorm(n,0,sqrt(0.18)),m)
-  x<-alpha+rnorm(N,0,sqrt(0.2))
-  delta<-rep(rnorm(n,0,sqrt(0.2)),m)
-  p.out<-plogis(1.36*t.rep+x+delta)
-  y<-rbinom(N,1,p.out)
-  
- #alpha<-rep(rnorm(n,0,0.18),m)
-  #x<-alpha+rnorm(N,0,0.5)
- # delta<-rep(rnorm(n,0,0.2),m)
-  #p.out<-plogis(1.36*t.rep+x+delta)
-  #y<-rbinom(N,1,p.out)
-  
-  # missingness indicator
-  missingicc=missing_icc(icc)
-  theta<-rep(rnorm(n,0,sqrt(missingicc)),m)
-  p.mis<-plogis(intercept+t.rep+x+theta)
-  p.obs<-1-p.mis
-  R<-rbinom(N,1,p.obs)
-  temp=data.frame(y=y,x=x,arm=t.rep,delta=delta,R=R,cluster=cluster)
-  return(temp)
-}
-
-#mis_per=function(n,m.bar,icc,seed=123){
-  data=c()
-  for(i in seq(-5,5,0.1)){
-    temp=data_gen4(n,m.bar,icc,intercept=i,seed)
-    percent=sum(temp$R)/dim(temp)[1]
-    data=rbind(data,c(percent,i))
-  }
-  data[,1]=abs(data[,1]-0.7)
-  intercept=data[data[,1]==min(data[,1])][2]
-  return(intercept)
-}
-
-#mis_per_check=function(n,m,icc,intercept,seed=123){
-  temp=data_gen4(n,m.bar,icc,intercept,seed)
-  percent=sum(temp$R)/dim(temp)[1]
-  print(percent)
-}
-
-icc=0.5
-for(var in c(0.5,0.8,1.1)){
-  print('1')
-  print(var)
-  intercept=mis_per(50,50,icc,seed=time,vars=var)
-  print
-  mp=mis_per_check(n=50,m=50,icc,seed=time,intercept=intercept,vars=var)
-  print(intercept)
-  print(mp)
-}
-
+## calculate intercepts in different scenarions
 temp1=c()
-
 for(var in c(0.2,0.5,0.8,1.1)){
   n=50;m.bar=50;icc=0.5
   data=c()
@@ -325,11 +145,10 @@ for(var in c(0.2,0.5,0.8,1.1)){
   intercept=data[data[,1]==min(data[,1])][2]
   print(data[data[,1]==min(data[,1])])
   print(intercept)
-  
   temp1=rbind(temp1,c(var,intercept))
-  
 }
 
+## calculate intercepts in different scenarions
 temp2=c()
 for(icc in seq(0.1,0.9,0.1)){
   var=0.2
@@ -344,42 +163,21 @@ for(icc in seq(0.1,0.9,0.1)){
   intercept=data[data[,1]==min(data[,1])][2]
   print(data[data[,1]==min(data[,1])])
   print(intercept)
-  
   temp2=rbind(temp2,c(icc,intercept))
-  
 }
-
-
-
-
-icc=0.5
-for(var in c(0.5,0.8,1.1)){
-  print('1')
-  print(var)
-  intercept=mis_per(n,m.bar,icc,seed=time,vars=var)
-  mp=mis_per_check(n,m.bar,icc,seed=time,intercept=intercept,vars=var)
-  print(intercept)
-  print(mp)
-}
-
-for(icc in seq(0.1,0.9,0.1)){
-  print('icc')
-  print(icc)
-  intercept=mis_per(n,m.bar,icc,seed=time,vars=var)
-  mp=mis_per_check(n,m.bar,icc,seed=time,intercept=intercept,vars=var)
-  print(intercept)
-  print(mp)
-}
-
+temp1=data.frame(temp1)
+names(temp1)=c('var','intercept')
 temp2=data.frame(temp2)
 names(temp2)=c('icc','intercept')
 
+
+## simulations
 for(icc in seq(0.1,0.9,0.1)){
   print('icc')
   print(icc)
   n=50
   m.bar=50
-  
+ 
   res_est_ind=c();res_std_ind=c();res_warn_ind=c()
   res_est_ex=c();res_std_ex=c();res_warn_ex=c()
   res_clu_est_ind=c();res_clu_std_ind=c();res_clu_warn_ind=c()
@@ -391,30 +189,29 @@ for(icc in seq(0.1,0.9,0.1)){
   
   est=c();std=c();warn=c()
   
-  for(time in 1:400){
+  for(time in 1:1000){
     print('icc')
     print(icc)
     
     print(time)
-    #intercept=mis_per(n,m.bar,icc,seed=time)
-    #mp=mis_per_check(n,m.bar,icc,seed=time,intercept=intercept)
     
     intercept=temp2[temp2$icc==icc,]$intercept
-    mp=mis_per_check(n=50,m=50,icc=icc,seed=time,intercept=intercept,vars=0.2);mp
+    mp=mis_per_check(n=50,m=50,icc=icc,seed=time,intercept=intercept,vars=0.2)
     
     d1=data_gene3(k=50,m=50,icc=icc,intercept=intercept,seed=time,vars=0.2)
     print(dim(d1))
     d2=d1
     d2$y=ifelse(d2$R==0,NA,d2$y)
-    d3=data.frame(y=d2$y,x=d2$x,cluster=d2$cluster,arm=d2$arm,missing=1-d2$R)
-   
+    d3=data.frame(y=d2$y,x=d2$x,cluster=d2$cluster,arm=d2$arm,missing=d2$R)
+    
+    # weight calculation
     logs=glm(missing ~ x+arm, data = d3,
              family = binomial(link='logit'))
     logs2=glmer(missing ~ x+arm+(1|cluster) , data = d3,
                 family = binomial(link='logit'))
     
-    weight=1/expit(predict(logs))
-    weight2=1/expit(predict(logs2))
+    weight=predict(logs,type="response")
+    weight2=predict(logs2,type="response")
     
     d3$weight=weight
     d3$weight2=weight2
@@ -555,22 +352,20 @@ for(icc in seq(0.1,0.9,0.1)){
   result=list(EST=EST,STD=STD,WARN=WARN,mp=mp)
   name_res=paste('ipw_result554',icc,'.RData',sep='')
   save(result,file=name_res)
-  
+ 
 }
 
-## ipw_result54, 1000, myown 
-
-setwd('/Users/youlanqiu/Downloads/ipw_result')
+### readin the results and draw a table
+setwd('')
 icc=0.1
 table_ind=c()
 table_exch=c()
 for(icc in seq(0.1,0.9,0.1)){
- # names=paste('/Users/youlanqiu/Downloads/ipw_result4',icc,'.RData',sep='')
-  names=paste('C:/Users/ly93/Documents/ipw_result54',icc,'.RData',sep='')
+  names=paste('ipw_result54',icc,'.RData',sep='')
   load(names)
   print(result$mp)
   est=result$EST
-  #est$time=1:1000
+ 
   std=result$STD
   warn=result$WARN
   apply(warn[,1:6],2,sum)
@@ -601,7 +396,4 @@ for(icc in seq(0.1,0.9,0.1)){
   exch=round(exch,3)
   table_exch=rbind(table_exch,exch)
 }
-#names=paste('/Users/youlanqiu/Downloads/ipw_result',icc,'.RData',sep='')
-
-
 
