@@ -1,0 +1,9 @@
+The things we are going to do next
+
+1. outcome generation: same with previous ones
+
+2. missingness generation: consideration scenarios that contain cluster effect 
+
+3. keep the missing precentage around 30% by changing the values of intercept in the missingness generation 
+
+4. gee only with arm
