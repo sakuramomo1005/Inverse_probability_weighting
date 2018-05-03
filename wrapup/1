@@ -1,1 +1,32 @@
 
+### data generate 
+
+missing_icc=function(icc){
+  pi=3.142
+  a=pi^2/(3*(1/icc-1))
+  return(a)
+}
+
+s=Sys.time()
+dategen(k,M,varx=2,icc=0.1,iccm=0.1)
+e=Sys.time()
+e-s
+dategen=function(k,M,mux=0,varx,icc,mud=0,iccm,intercept){
+  ## intervention group
+  K=2*k
+  m=rpois(K,M)
+  N=sum(m)
+  i=rep(rep(c(0,1),each=k),times=m)
+  cluster=rep(1:K,times=m)
+  vard=missing_icc(icc)
+  delta=rep(rnorm(K,mud,sqrt(vard)),times=m)
+  x=rnorm(N,mux,sqrt(varx))
+  p=expit(1+1.36*i+x+delta)
+  y=rbinom(N,1,p)
+  alpha=rep(rnorm(K,0,sqrt(missing_icc(iccm))),times=m)
+  mis=expit(intercept+i+x+alpha)
+  r=rbinom(N,1,p)
+  res=data.frame(y=y,arm=i,x=x,cluster=cluster,delta=delta,p=p,r=r)
+  
+  return(res)
+}
