@@ -1,0 +1,361 @@
+
+library(lme4) # library to calcualte GLM
+library(geeM) # library to calculate GEE
+library(jomo) # library to do MMI
+
+library(knitr) # library to draw tables 
+library(kableExtra) # library to draw tables
+
+BCVexch <- function(y,X,beta,alpha,phi,id,w){
+  ########################################
+  # Input:
+  # y: the outcome
+  # X: covariates
+  # beta: the estimated beta
+  # alpha: a scalar for the correlation
+  # phi: dispersion parameter 
+  # id: a vector that records the cluster indicator for each individual
+  # w: the weights. When using CRA or MMI, w=1
+  ########################################
+  require(MASS)
+  
+  # Creates two vectors that have the start and end points for each cluster
+  BEGINEND <- function(n){
+    last <- cumsum(n)
+    first <- last-n+1
+    return(cbind(first,last))
+  }
+  
+  # Score function
+  SCORE <- function(beta,alpha,phi,y,X,n,p){
+    U <- rep(0,p)
+    UUtran <- Ustar <- matrix(0,p,p)
+    locx <- BEGINEND(n)
+    
+    for(i in 1:length(n)){
+      X_c <- X[locx[i,1]:locx[i,2],,drop=FALSE]
+      y_c <- y[locx[i,1]:locx[i,2]]
+      w_c <- w[locx[i,1]:locx[i,2]]
+      
+      U_c <- rep(0,p)
+      Ustar_c <- matrix(0,p,p)
+      mu_c <- 1/(1+exp(c(-X_c%*%beta)))
+      
+      C <- X_c*(mu_c*(1-mu_c))
+      A <- y_c-mu_c
+      D <- diag(w_c,nrow=length(w_c))
+      INVR <- diag(1/(1-alpha),n[i])-matrix(alpha/((1-alpha)*(1-alpha+n[i]*alpha)),n[i],n[i])
+      INVB <- diag(1/sqrt(mu_c*(1-mu_c)),n[i]) %*% INVR %*% diag(1/sqrt(mu_c*(1-mu_c)),n[i]) %*% D/phi
+      
+      U_c <- t(C)%*%INVB%*%A
+      UUtran_c <- tcrossprod(U_c)
+      Ustar_c <- t(C)%*%INVB%*%C
+      U <- U+U_c
+      UUtran <- UUtran+UUtran_c
+      Ustar <- Ustar+Ustar_c
+    }
+    return(list(U=U,UUtran=UUtran,Ustar=Ustar))
+  }
+  
+  # Creates bias-corrected covariance matrix of beta
+  p <- ncol(X)
+  n <- as.numeric(table(id))
+  SCORE_RES <- SCORE(beta,alpha,phi,y,X,n,p)
+  U <- SCORE_RES$U
+  UUtran <- SCORE_RES$UUtran
+  Ustar <- SCORE_RES$Ustar
+  
+  # Naive or Model-based estimator
+  naive <- ginv(Ustar)
+  
+  # BC0 or usual Sandwich estimator     
+  robust <- naive%*%UUtran%*%t(naive)
+  
+  # Bias-corrected variance
+  Ustar_c_array <- UUtran_c_array <- array(0,c(p,p,length(n)))
+  UUtran <- UUbc <- UUbc2 <- UUbc3 <- Ustar <- matrix(0,p,p)
+  
+  locx <- BEGINEND(n)
+  
+  for(i in 1:length(n)){
+    X_c <- X[locx[i,1]:locx[i,2],,drop=FALSE]
+    y_c <- y[locx[i,1]:locx[i,2]]
+    w_c <- w[locx[i,1]:locx[i,2]]
+    mu_c <- 1/(1+exp(c(-X_c%*%beta)))
+    
+    U_i <- U_c <- rep(0,p)
+    Ustar_c <- matrix(0,p,p)
+    
+    # commands for beta
+    C <- X_c*(mu_c*(1-mu_c))
+    A <- y_c-mu_c
+    D <- diag(w_c,nrow=length(w_c))
+    INVR <- diag(1/(1-alpha),n[i])-matrix(alpha/((1-alpha)*(1-alpha+n[i]*alpha)),n[i],n[i])
+    INVB <- diag(1/sqrt(mu_c*(1-mu_c)),n[i]) %*% INVR %*% diag(1/sqrt(mu_c*(1-mu_c)),n[i]) %*% D/phi
+    U_i <- t(C)%*%INVB%*%A
+    
+    L_i <- ginv(diag(1,nrow=n[i]) - C%*%naive%*%t(C)%*%INVB) %*% A
+    U_c <- t(C)%*%INVB%*%L_i
+    
+    Ustar_c <- t(C)%*%INVB%*%D%*%C
+    Ustar <- Ustar+Ustar_c
+    UUtran_c <- tcrossprod(U_i)
+    UUtran <- UUtran+UUtran_c
+    UUbc_c <- tcrossprod(U_c)
+    UUbc <- UUbc+UUbc_c
+    UUbc_ic <- tcrossprod(U_c,U_i)
+    UUbc2 <- UUbc2+UUbc_ic
+    
+    Ustar_c_array[,,i] <- Ustar_c
+    UUtran_c_array[,,i] <- UUtran_c
+  }
+  
+  # calculating adjustment factor for BC3
+  for(i in 1:length(n)){      
+    Hi <- diag(1/sqrt(1-pmin(0.75,c(diag(Ustar_c_array[,,i]%*%naive)))))
+    UUbc3 <- UUbc3+Hi%*%UUtran_c_array[,,i]%*%Hi
+  }
+  
+  # BC1 or Variance estimator due to Kauermann and Carroll (2001);
+  varKC <- naive%*%(UUbc2+t(UUbc2))%*%t(naive)/2
+  
+  # BC2 or Variance estimator due to Mancl and DeRouen (2001);
+  varMD <- naive%*%UUbc%*%t(naive)
+  
+  # BC3 or Variance estimator due to Fay and Graubard (2001);
+  varFG <- naive%*%UUbc3%*%t(naive)
+  
+  ########################################
+  # Output
+  # naive: naive or model-based var
+  # robust: robust sandwich var
+  # varMD: bias-corrected sandwich var due to Mancl and DeRouen (2001)
+  # varKC: bias-corrected sandwich var due to Kauermann and Carroll (2001)
+  # varFG: bias-corrected sandwich var due to Fay and Graubard (2001)
+  ########################################
+  return(list(naive=naive,robust=robust,varMD=varMD,varKC=varKC,varFG=varFG))
+}
+
+
+myTryCatch <- function(expr) {
+  warn <- err <- NULL
+  value <- withCallingHandlers(
+    tryCatch(expr, error=function(e) {
+      err <<- e
+      NULL
+    }), warning=function(w) {
+      warn <<- w
+      invokeRestart("muffleWarning")
+    })
+  list(value=value, warning=warn, error=err)
+}
+missing_icc <- function(icc){
+  pi <- 3.142
+  res <- pi^2/(3*(1/icc-1))
+  return(res)
+}
+
+# 2.3 Function to calculate the missingness percentage in dataset
+missing_per <- function(data){
+  res <- sum(data$r)/dim(data)[1]
+  return(res)
+}
+
+# 2.4 Expit function
+expit <- function(x){y <- exp(x)/(1+exp(x));return(y)}
+
+# 2.5 Data generation function
+datagen <- function(k,M,mux=0,varx,icc,mud=0,iccm,intercept){
+  
+  K <- 2*k 
+  # cluster sizes
+  m <- rpois(K,M) 
+  # total individual number
+  N <- sum(m) 
+  #  indicator of intervention arm; i = 1 treated; i = 0 non treated
+  i <- rep(rep(c(0,1),each=k),times=m) 
+  # cluster id
+  cluster <- rep(1:K,times=m)
+  # the variance of delta, based on dataset ICC
+  vard <- missing_icc(icc)
+  delta <- rep(rnorm(K,mud,sqrt(vard)),times=m) # the random effect in generating the outcome
+  x <- rnorm(N,mux,sqrt(varx)) # the covariate 
+  p <- expit(1+1.36*i+x+delta) # the probability of the outcome
+  y <- rbinom(N,1,p) # the outcome, 1 or 0.
+  
+  ## generating the missingness
+  alpha <- rep(rnorm(K,0,sqrt(missing_icc(iccm))),times=m)
+  # missingness generation function
+  mis <- expit(intercept+i+x+alpha) 
+  
+  # the missingness indicator. 
+  # r = 1 missing; r = 0 not missing 
+  r <- rbinom(N,1,mis)
+  
+  # the whole dataset
+  res <- data.frame(y = y, arm = i, x = x,
+                    cluster = cluster, delta = delta, 
+                    mis = mis, r = r)
+  return(res)
+}
+
+varx=0.2; M=50; Nimp=15
+
+s=Sys.time() # save time 
+
+
+# est_true_ind <- c()
+# std_true_ind <- c()
+# robust_true_ind <- c()
+# MD_true_ind <- c()
+# KC_true_ind <- c()
+# FG_true_ind <- c()
+# 
+#   est_true_ind 
+#   std_true_ind 
+#   robust_true_ind 
+#   MD_true_ind  
+#   KC_true_ind 
+#   FG_true_ind 
+
+
+for(k in c(10, 25, 50)){ # number of clusters 
+  for(icc in c(0.05, 0.1, 0.2)){ # icc for data generation
+    for(iccm in c(0, 0.1, 0.3, 0.5)){ # icc for missingness
+      robust_ipw_clu_ex <- c();MD_ipw_clu_ex <- c();KC_ipw_clu_ex <- c();FG_ipw_clu_ex <- c()
+      est_ipw_clu_ex <- c();std_ipw_clu_ex <- c()
+      robust_ipw_clu_ind <- c();MD_ipw_clu_ind <- c();KC_ipw_clu_ind <- c();FG_ipw_clu_ind <- c()
+      est_ipw_clu_ind <- c();std_ipw_clu_ind <- c()
+      
+      for(times in 1:2){
+        print(paste('k',k,'icc',icc,'iccm',iccm,'times',times))
+        set.seed(times)
+        mis <- c()
+        for(intercept in seq(-5,5,0.1)){
+          temp <- datagen(k,M,varx=varx,icc=icc,iccm=iccm,intercept=intercept)  
+          mis <- c(mis,missing_per(temp))
+        }
+        intercept=seq(-5,5,0.1)[which.min(abs(mis-0.3))]
+        
+        d1 <- datagen(k,M,varx=varx,icc=icc,iccm=iccm,intercept=intercept)
+        d3 <- d1
+        d3$y <- ifelse(d3$r==1,NA,d3$y)
+        d3$missing <- d3$r
+        d3$w = 1/d3$mis
+        
+        d2 <- na.omit(d3)
+        ipw_clu_ind <- myTryCatch(geem(formula = y~arm,id = cluster, data = d2,
+                                       family =  binomial("logit"),
+                                       weights = d2$w,
+                                       corstr = "independence"))
+        ipw_clu_ex <- myTryCatch(geem(formula=y~arm,id=cluster, data = d2,
+                                      family =  binomial("logit"),
+                                      weights = d2$w,
+                                      corstr = "exchangeable"))
+        
+        if(is.null(ipw_clu_ind$value)==0){
+          if(ipw_clu_ind$value$converged==1){
+            phi9 <- ipw_clu_ind$value$phi
+            alpha9 <- ipw_clu_ind$value$alpha
+            beta9 <- ipw_clu_ind$value$beta
+            est_ipw_clu_ind <- c(est_ipw_clu_ind,beta9[2])
+            std_ipw_clu_ind <- c(std_ipw_clu_ind,summary(ipw_clu_ind$value)$se.robust[2])
+            w9 <- d2$w
+            y9 <- d2$y
+            X9 <- cbind(rep(1,dim(d2)[1]),d2$arm)
+            id9 <- d2$cluster
+            correction9 <- BCVexch(y9,X9,beta9,alpha9,phi9,id9,w9)
+            robust_ipw_clu_ind <- c(robust_ipw_clu_ind,sqrt(diag(correction9$robust))[2])
+            MD_ipw_clu_ind <- c(MD_ipw_clu_ind,sqrt(diag(correction9$varMD))[2])
+            KC_ipw_clu_ind <- c(KC_ipw_clu_ind,sqrt(diag(correction9$varKC))[2])
+            FG_ipw_clu_ind <- c(FG_ipw_clu_ind,sqrt(diag(correction9$varFG))[2])
+          }else{
+            est_ipw_clu_ind <- c(est_ipw_clu_ind,NA)
+            std_ipw_clu_ind <- c(std_ipw_clu_ind,NA)
+            robust_ipw_clu_ind <- c(robust_ipw_clu_ind,NA)
+            MD_ipw_clu_ind <- c(MD_ipw_clu_ind,NA)
+            KC_ipw_clu_ind <- c(KC_ipw_clu_ind,NA)
+            FG_ipw_clu_ind <- c(FG_ipw_clu_ind,NA)
+          }
+        }else{
+          est_ipw_clu_ind <- c(est_ipw_clu_ind,NA)
+          std_ipw_clu_ind <- c(std_ipw_clu_ind,NA)
+          robust_ipw_clu_ind <- c(robust_ipw_clu_ind,NA)
+          MD_ipw_clu_ind <- c(MD_ipw_clu_ind,NA)
+          KC_ipw_clu_ind <- c(KC_ipw_clu_ind,NA)
+          FG_ipw_clu_ind <- c(FG_ipw_clu_ind,NA)
+        }
+        
+        # robust_ipw_clu_ind;MD_ipw_clu_ind;KC_ipw_clu_ind;FG_ipw_clu_ind
+        # est_ipw_clu_ind;std_ipw_clu_ind
+        
+        ## ipw_clu exchangeable
+        
+        if(is.null(ipw_clu_ex$value)==0){
+          if( ipw_clu_ex$value$converged==1){
+            phi10 <- ipw_clu_ex$value$phi
+            alpha10 <- ipw_clu_ex$value$alpha
+            beta10 <- ipw_clu_ex$value$beta
+            est_ipw_clu_ex <- c(est_ipw_clu_ex,beta10[2])
+            std_ipw_clu_ex <- c(std_ipw_clu_ex,summary(ipw_clu_ex$value)$se.robust[2])
+            w10 <- d2$w
+            y10 <- d2$y
+            X10 <- cbind(rep(1,dim(d2)[1]),d2$arm)
+            id10 <- d2$cluster
+            correction10 <- BCVexch(y10,X10,beta10,alpha10,phi10,id10,w10)
+            robust_ipw_clu_ex <- c(robust_ipw_clu_ex,sqrt(diag(correction10$robust))[2])
+            MD_ipw_clu_ex <- c(MD_ipw_clu_ex,sqrt(diag(correction10$varMD))[2])
+            KC_ipw_clu_ex <- c(KC_ipw_clu_ex,sqrt(diag(correction10$varKC))[2])
+            FG_ipw_clu_ex <- c(FG_ipw_clu_ex,sqrt(diag(correction10$varFG))[2])
+          }else{
+            est_ipw_clu_ex <- c(est_ipw_clu_ex,NA)
+            std_ipw_clu_ex <- c(std_ipw_clu_ex,NA)
+            robust_ipw_clu_ex  <- c(robust_ipw_clu_ex,NA)
+            MD_ipw_clu_ex <- c(MD_ipw_clu_ex,NA)
+            KC_ipw_clu_ex <- c(KC_ipw_clu_ex,NA)
+            FG_ipw_clu_ex <- c(FG_ipw_clu_ex,NA)
+          }
+        }else{
+          est_ipw_clu_ex <- c(est_ipw_clu_ex,NA)
+          std_ipw_clu_ex <- c(std_ipw_clu_ex,NA)
+          robust_ipw_clu_ex  <- c(robust_ipw_clu_ex,NA)
+          MD_ipw_clu_ex <- c(MD_ipw_clu_ex,NA)
+          KC_ipw_clu_ex <- c(KC_ipw_clu_ex,NA)
+          FG_ipw_clu_ex <- c(FG_ipw_clu_ex,NA)
+        } 
+        
+        # robust_ipw_clu_ex;MD_ipw_clu_ex;KC_ipw_clu_ex;FG_ipw_clu_ex
+        # est_ipw_clu_ex;std_ipw_clu_ex
+        
+      }
+      
+      # save the results as data frame
+      est_ind <- data.frame(est_ipw_clu_ind=est_ipw_clu_ind)
+      est_ex <- data.frame(est_ipw_clu_ex=est_ipw_clu_ex)
+      
+      std_ind <- data.frame(std_ipw_clu_ind=std_ipw_clu_ind)
+      std_ex <- data.frame(std_ipw_clu_ex=std_ipw_clu_ex)
+      
+      robust_ind <- data.frame(robust_ipw_clu_ind=robust_ipw_clu_ind)
+      robust_ex <- data.frame(robust_ipw_clu_ex=robust_ipw_clu_ex)
+      
+      MD_ind <- data.frame(MD_ipw_clu_ind=MD_ipw_clu_ind)
+      MD_ex <- data.frame(MD_ipw_clu_ex=MD_ipw_clu_ex)
+      
+      KC_ind <- data.frame(KC_ipw_clu_ind=KC_ipw_clu_ind)
+      KC_ex <- data.frame(KC_ipw_clu_ex=KC_ipw_clu_ex)
+      
+      FG_ind <- data.frame(FG_ipw_clu_ind=FG_ipw_clu_ind)
+      FG_ex <- data.frame(FG_ipw_clu_ex=FG_ipw_clu_ex)
+      
+      result <- list(est_ind=est_ind,est_ex=est_ex,std_ind=std_ind,std_ex=std_ex,
+                     robust_ind=robust_ind,robust_ex=robust_ex,
+                     MD_ind=MD_ind,KC_ind=KC_ind,FG_ind=FG_ind,
+                     MD_ex=MD_ex,KC_ex=KC_ex,FG_ex=FG_ex)
+      names <- paste('geem_true',k,icc,iccm,'.RData',sep='')
+      save(result,file=names)
+      
+    }
+  }
+}
+
